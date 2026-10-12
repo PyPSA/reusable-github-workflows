@@ -1,0 +1,60 @@
+name: Link check
+
+on:
+  workflow_call:
+    inputs:
+      globs:
+        type: string
+        default: "'./**/*.md' './**/*.py' './**/*.yaml' './**/*.yml' './**/*.toml'"
+        description: Space-separated, quoted file globs that lychee checks.
+      config:
+        type: string
+        default: .lychee.toml
+        description: Lychee config file, relative to working-directory. If the file is missing, a built-in default is used.
+      fail:
+        type: boolean
+        default: true
+        description: Fail the job when lychee finds broken links.
+      working-directory:
+        type: string
+        default: .
+        description: Directory that holds the files to check.
+
+permissions: {}
+
+jobs:
+  lychee:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: config
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          CONFIG: ${{ inputs.config }}
+        run: |
+          set -euo pipefail
+          if [ -f "$CONFIG" ]; then
+            echo "path=$(realpath "$CONFIG")" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          path="$RUNNER_TEMP/lychee.toml"
+          cat > "$path" <<'TOML'
+          scheme = ["https", "http"]
+          accept = ["100..=403", "405..=409", "411..=599"]
+          accept_timeouts = true
+          exclude = ["localhost", "127.0.0.1"]
+          timeout = 30
+          max_retries = 5
+          max_redirects = 10
+          host_concurrency = 2
+          TOML
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --no-progress --config ${{ steps.config.outputs.path }} ${{ inputs.globs }}
+          fail: ${{ inputs.fail }}
+          workingDirectory: ${{ inputs.working-directory }}

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fixture-pkg"
+dynamic = ["version"]
+description = "Fixture package for PyPSA reusable workflow self-tests."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.14",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+benchmarks = ["pytest-benchmark"]
+
+[tool.setuptools_scm]
+root = "../.."
+fallback_version = "0.0.0+unknown"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

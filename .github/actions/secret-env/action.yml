@@ -1,0 +1,36 @@
+name: Export secret env
+description: Export named secrets or variables as env vars. Secrets are masked. A missing name fails.
+inputs:
+  secrets-json:
+    description: Pass toJSON(secrets).
+    default: '{}'
+  vars-json:
+    description: Pass toJSON(vars).
+    default: '{}'
+  names:
+    description: Space-separated secret or variable names. Each is looked up in secrets, then in vars.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Export secret env
+      shell: bash
+      env:
+        SECRETS_JSON: ${{ inputs.secrets-json }}
+        VARS_JSON: ${{ inputs.vars-json }}
+        NAMES: ${{ inputs.names }}
+      run: |
+        set -euo pipefail
+        for name in $NAMES; do
+          if jq -e --arg n "$name" 'has($n)' <<<"$SECRETS_JSON" >/dev/null; then
+            value=$(jq -r --arg n "$name" '.[$n]' <<<"$SECRETS_JSON")
+            while IFS= read -r line; do [ -z "$line" ] || echo "::add-mask::$line"; done <<<"$value"
+          elif jq -e --arg n "$name" 'has($n)' <<<"$VARS_JSON" >/dev/null; then
+            value=$(jq -r --arg n "$name" '.[$n]' <<<"$VARS_JSON")
+          else
+            echo "::error::secret-env: '$name' is neither a secret nor a variable" >&2
+            exit 1
+          fi
+          delim="EOF_$(openssl rand -hex 16)"
+          printf '%s<<%s\n%s\n%s\n' "$name" "$delim" "$value" "$delim" >>"$GITHUB_ENV"
+        done

@@ -1,0 +1,45 @@
+name: Test matrix
+description: Build an OS x version include list from a version list and a matrix mode.
+inputs:
+  versions:
+    description: JSON list of versions (Python versions or pixi environments).
+    required: true
+  mode:
+    description: auto, single, lean or full.
+    default: auto
+  os-full:
+    description: JSON list of runners for the full matrix.
+    default: '["ubuntu-latest","macos-latest","windows-latest"]'
+outputs:
+  include:
+    description: JSON list of {os, version}.
+    value: ${{ steps.matrix.outputs.include }}
+runs:
+  using: composite
+  steps:
+    - id: matrix
+      shell: bash
+      env:
+        VERSIONS: ${{ inputs.versions }}
+        MODE: ${{ inputs.mode }}
+        OS_FULL: ${{ inputs.os-full }}
+        EVENT: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+      run: |
+        set -euo pipefail
+        jq -e 'type == "array" and length > 0' <<<"$VERSIONS" >/dev/null || { echo "::error::versions must be a non-empty JSON list, got '$VERSIONS'" >&2; exit 1; }
+        mode="$MODE"
+        if [ "$mode" = auto ]; then
+          case "$EVENT:$REF" in
+            schedule:* | workflow_dispatch:* | *:refs/tags/*) mode=full ;;
+            *) mode=lean ;;
+          esac
+        fi
+        case "$mode" in
+          single) filter='[{os: "ubuntu-latest", version: .[-1]}]' ;;
+          lean) filter='[[.[0], .[-1]] | unique[] | {os: "ubuntu-latest", version: .}]' ;;
+          full) filter='[$os[] as $o | .[] | {os: $o, version: .}]' ;;
+          *) echo "::error::unknown matrix mode '$mode'" >&2; exit 1 ;;
+        esac
+        include=$(jq -c --argjson os "$OS_FULL" "$filter" <<<"$VERSIONS")
+        echo "include=$include" | tee -a "$GITHUB_OUTPUT"

@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: 0 5 * * 1
+
+permissions: {}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uvx --from actionlint-py actionlint
+      - run: uvx zizmor --offline .github
+
+  matrix-action:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - id: lean
+        uses: $/.github/actions/matrix
+        with:
+          versions: '["3.12","3.13","3.14"]'
+          mode: lean
+      - id: full
+        uses: $/.github/actions/matrix
+        with:
+          versions: '["3.12"]'
+          mode: full
+          os-full: '["ubuntu-latest","windows-latest"]'
+      - env:
+          LEAN: ${{ steps.lean.outputs.include }}
+          FULL: ${{ steps.full.outputs.include }}
+        run: |
+          set -euo pipefail
+          test "$LEAN" = '[{"os":"ubuntu-latest","version":"3.12"},{"os":"ubuntu-latest","version":"3.14"}]'
+          test "$FULL" = '[{"os":"ubuntu-latest","version":"3.12"},{"os":"windows-latest","version":"3.12"}]'
+
+  test-library:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+    secrets: inherit
+    with:
+      working-directory: tests/fixture-package
+      pixi-add: glpk
+      coverage: true
+
+  test-project:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixture-project
+      pixi-task: test
+      pixi-environments: ^py3
+
+  benchmark:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/benchmark.yml
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    secrets: inherit
+    with:
+      mode: compare
+      benchmark-path: benchmarks
+      working-directory: tests/fixture-package
+
+  link-check:
+    uses: ./.github/workflows/link-check.yml
+    permissions:
+      contents: read
+    with:
+      working-directory: tests/fixture-package
+
+  release:
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+      id-token: write
+    secrets: inherit
+    with:
+      dry-run: true
+      test: false
+      tag: v0.0.0
+      working-directory: tests/fixture-package
+
+  pypsa-eur:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/pypsa-eur.yml
+    permissions:
+      contents: read
+      pull-requests: read
+    secrets: inherit
+    with:
+      package: pypsa
+      repository: PyPSA/PyPSA
+      rev: master

@@ -1,0 +1,189 @@
+name: Set up pixi environment
+description: Create a pixi environment (library mode with a throwaway manifest or project mode with the repo manifest) and export the run prefix.
+inputs:
+  mode:
+    description: library (throwaway pixi env + uv install of a built wheel) or project (repo pixi manifest).
+    required: true
+  python-version:
+    description: Python version for library mode.
+    default: ''
+  pixi-add:
+    description: Space-separated conda specs added in library mode, e.g. "glpk gurobi::gurobi".
+    default: ''
+  extras:
+    description: Comma-separated extras installed with the wheel in library mode.
+    default: dev
+  uv-locked:
+    description: Library mode only. Install dependencies from uv.lock with uv sync before the wheel.
+    default: 'false'
+  wheel-dir:
+    description: Directory, relative to working-directory or absolute, that holds exactly one wheel.
+    default: dist
+  manifest-path:
+    description: Project mode manifest, relative to working-directory. Default pixi.toml, else pyproject.toml.
+    default: ''
+  pixi-environment:
+    description: Project mode pixi environment.
+    default: default
+  pixi-version:
+    description: pixi version.
+    default: v0.81.0
+  secrets-json:
+    description: Pass toJSON(secrets).
+    default: '{}'
+  vars-json:
+    description: Pass toJSON(vars).
+    default: '{}'
+  secret-env:
+    description: Space-separated secret or variable names to export as env vars.
+    default: ''
+  working-directory:
+    description: Directory of the caller package or project.
+    default: .
+outputs:
+  run:
+    description: Command prefix that runs a command inside the environment.
+    value: ${{ steps.library.outputs.run || steps.project-run.outputs.run }}
+runs:
+  using: composite
+  steps:
+    - name: Mode check
+      if: inputs.mode != 'library' && inputs.mode != 'project'
+      shell: bash
+      run: |
+        echo "::error::mode must be library or project" >&2
+        exit 1
+
+    - if: inputs.secret-env != ''
+      uses: $/.github/actions/secret-env
+      with:
+        secrets-json: ${{ inputs.secrets-json }}
+        vars-json: ${{ inputs.vars-json }}
+        names: ${{ inputs.secret-env }}
+
+    - name: Prepare library environment
+      id: library-prep
+      if: inputs.mode == 'library'
+      shell: bash
+      env:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        PIXI_ADD: ${{ inputs.pixi-add }}
+      run: |
+        set -euo pipefail
+        [ -n "$PYTHON_VERSION" ] || { echo "::error::python-version is required in library mode" >&2; exit 1; }
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) platform=linux-64 ;;
+          Linux-ARM64) platform=linux-aarch64 ;;
+          macOS-X64) platform=osx-64 ;;
+          macOS-ARM64) platform=osx-arm64 ;;
+          Windows-X64) platform=win-64 ;;
+          Windows-ARM64) platform=win-arm64 ;;
+          *) echo "::error::unsupported runner $RUNNER_OS-$RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        temp="${RUNNER_TEMP//\\//}"
+        channels='"conda-forge"'
+        for spec in $PIXI_ADD; do
+          case "$spec" in *::*) channels="$channels, \"${spec%%::*}\"" ;; esac
+        done
+        mkdir -p "$temp/env"
+        printf '[workspace]\nname = "env"\nchannels = [%s]\nplatforms = ["%s"]\n' "$channels" "$platform" >"$temp/env/pixi.toml"
+        cat "$temp/env/pixi.toml"
+        {
+          echo "PIXI_CACHE_DIR=$temp/pixi-cache"
+          echo "UV_CACHE_DIR=$temp/uv-cache"
+        } >>"$GITHUB_ENV"
+        echo "manifest=$temp/env/pixi.toml" >>"$GITHUB_OUTPUT"
+        echo "cache-tag=$(printf '%s' "$PIXI_ADD" | tr -c 'A-Za-z0-9._:=<>*-' _)" >>"$GITHUB_OUTPUT"
+
+    - name: Resolve project manifest
+      id: project
+      if: inputs.mode == 'project'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MANIFEST_PATH: ${{ inputs.manifest-path }}
+      run: |
+        set -euo pipefail
+        manifest="$MANIFEST_PATH"
+        if [ -z "$manifest" ]; then
+          if [ -f pixi.toml ]; then manifest=pixi.toml; else manifest=pyproject.toml; fi
+        fi
+        [ -f "$manifest" ] || { echo "::error::manifest $manifest not found" >&2; exit 1; }
+        dir=$(cd "$(dirname "$manifest")" && { pwd -W 2>/dev/null || pwd; })
+        echo "manifest=$dir/$(basename "$manifest")" >>"$GITHUB_OUTPUT"
+
+    - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
+      if: inputs.mode == 'library'
+      with:
+        pixi-version: ${{ inputs.pixi-version }}
+        run-install: false
+
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.mode == 'library'
+      with:
+        path: |
+          ${{ runner.temp }}/pixi-cache
+          ${{ runner.temp }}/uv-cache
+        key: setup-env-${{ runner.os }}-${{ runner.arch }}-py${{ inputs.python-version }}-${{ steps.library-prep.outputs.cache-tag }}-${{ hashFiles(format('{0}/pyproject.toml', inputs.working-directory)) }}
+        restore-keys: |
+          setup-env-${{ runner.os }}-${{ runner.arch }}-py${{ inputs.python-version }}-${{ steps.library-prep.outputs.cache-tag }}-
+
+    - name: Install library environment
+      id: library
+      if: inputs.mode == 'library'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MANIFEST: ${{ steps.library-prep.outputs.manifest }}
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        PIXI_ADD: ${{ inputs.pixi-add }}
+        EXTRAS: ${{ inputs.extras }}
+        UV_LOCKED: ${{ inputs.uv-locked }}
+        WHEEL_DIR: ${{ inputs.wheel-dir }}
+      run: |
+        set -euo pipefail
+        read -ra specs <<<"$PIXI_ADD"
+        pixi add --manifest-path "$MANIFEST" "python=$PYTHON_VERSION.*" uv ${specs[@]+"${specs[@]}"}
+        run="pixi run --manifest-path $MANIFEST"
+        shopt -s nullglob
+        wheels=("${WHEEL_DIR//\\//}"/*.whl)
+        [ "${#wheels[@]}" -eq 1 ] || { echo "::error::expected one wheel in $WHEEL_DIR, found ${#wheels[@]}" >&2; exit 1; }
+        wheel="${wheels[0]}"
+        if [ "$UV_LOCKED" = true ]; then
+          extra_args=()
+          IFS=',' read -ra extras <<<"$EXTRAS"
+          for extra in ${extras[@]+"${extras[@]}"}; do extra_args+=(--extra "$extra"); done
+          UV_PROJECT_ENVIRONMENT="$(dirname "$MANIFEST")/.pixi/envs/default" \
+            $run uv sync --locked --inexact --no-install-project ${extra_args[@]+"${extra_args[@]}"}
+          $run uv pip install --no-deps "$wheel"
+        elif [ -n "$EXTRAS" ]; then
+          $run uv pip install "$wheel[$EXTRAS]"
+        else
+          $run uv pip install "$wheel"
+        fi
+        echo "run=$run" >>"$GITHUB_OUTPUT"
+
+    - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
+      if: inputs.mode == 'project'
+      with:
+        pixi-version: ${{ inputs.pixi-version }}
+        manifest-path: ${{ steps.project.outputs.manifest }}
+        environments: ${{ inputs.pixi-environment }}
+        locked: true
+        cache: true
+        cache-write: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+    - name: Project run prefix
+      id: project-run
+      if: inputs.mode == 'project'
+      shell: bash
+      env:
+        MANIFEST: ${{ steps.project.outputs.manifest }}
+        PIXI_ENVIRONMENT: ${{ inputs.pixi-environment }}
+      run: echo "run=pixi run --manifest-path $MANIFEST -e $PIXI_ENVIRONMENT" >>"$GITHUB_OUTPUT"
+
+    - name: Export RUN
+      shell: bash
+      env:
+        RUN: ${{ steps.library.outputs.run || steps.project-run.outputs.run }}
+      run: echo "RUN=$RUN" >>"$GITHUB_ENV"

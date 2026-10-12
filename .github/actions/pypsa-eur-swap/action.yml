@@ -1,0 +1,39 @@
+name: Swap package in pypsa-eur
+description: Replace a package in a pypsa-eur pixi workspace with a git revision.
+inputs:
+  package:
+    description: Package name to replace. Empty means the name of the repository that runs the workflow.
+    default: ''
+  repository:
+    description: GitHub repository (owner/name) to install the package from.
+    required: true
+  rev:
+    description: Commit SHA (40 hex chars) or branch to install.
+    required: true
+  also-upgrade:
+    description: Space-separated packages to upgrade afterwards.
+    default: ''
+  working-directory:
+    description: pypsa-eur checkout.
+    default: .
+runs:
+  using: composite
+  steps:
+    - name: Swap package
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGE: ${{ inputs.package }}
+        REPOSITORY: ${{ inputs.repository }}
+        REV: ${{ inputs.rev }}
+        ALSO_UPGRADE: ${{ inputs.also-upgrade }}
+      run: |
+        set -euo pipefail
+        PACKAGE="${PACKAGE:-${GITHUB_REPOSITORY#*/}}"
+        sed -i.bak '/^exclude-newer[[:space:]]*=/d' pixi.toml && rm pixi.toml.bak
+        pixi remove "$PACKAGE"
+        if [[ "$REV" =~ ^[0-9a-f]{40}$ ]]; then ref_flag=--rev; else ref_flag=--branch; fi
+        pixi add --pypi --git "https://github.com/$REPOSITORY.git" "$PACKAGE" "$ref_flag" "$REV"
+        read -ra upgrade <<<"$ALSO_UPGRADE"
+        if [ "${#upgrade[@]}" -gt 0 ]; then pixi upgrade "${upgrade[@]}"; fi
+        pixi list "$PACKAGE"
