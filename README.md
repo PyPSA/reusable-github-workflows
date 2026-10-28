@@ -19,8 +19,8 @@ Pre-release tags do not move `v1`.
 
 Pin a workflow in one of two ways:
 
-- Major tag: `uses: PyPSA/reusable-workflows/.github/workflows/test.yml@v1`.
-- Full commit SHA: `uses: PyPSA/reusable-workflows/.github/workflows/test.yml@<sha> # v1.2.3`.
+- Major tag: `uses: PyPSA/reusable-github-workflows/.github/workflows/test.yml@v1`.
+- Full commit SHA: `uses: PyPSA/reusable-github-workflows/.github/workflows/test.yml@<sha> # v1.2.3`.
   Use this form if your repo requires SHA pins (for example with zizmor).
   Use this form for `release.yml`. The release run can publish to PyPI, and a SHA cannot move.
 
@@ -80,7 +80,7 @@ on:
 permissions: {}
 jobs:
   test:
-    uses: PyPSA/reusable-workflows/.github/workflows/test.yml@v1
+    uses: PyPSA/reusable-github-workflows/.github/workflows/test.yml@v1
     with:
       pixi-add: glpk coin-or-cbc
       coverage: true
@@ -133,7 +133,7 @@ on:
 permissions: {}
 jobs:
   release:
-    uses: PyPSA/reusable-workflows/.github/workflows/release.yml@<sha> # v1.x.y
+    uses: PyPSA/reusable-github-workflows/.github/workflows/release.yml@<sha> # v1.x.y
     with:
       prepare-command: pixi run update-data
       testpypi: true
@@ -183,7 +183,7 @@ on:
 permissions: {}
 jobs:
   benchmark:
-    uses: PyPSA/reusable-workflows/.github/workflows/benchmark.yml@v1
+    uses: PyPSA/reusable-github-workflows/.github/workflows/benchmark.yml@v1
     with:
       mode: codspeed
       pixi-add: glpk coin-or-cbc
@@ -219,7 +219,7 @@ on:
 permissions: {}
 jobs:
   pypsa-eur:
-    uses: PyPSA/reusable-workflows/.github/workflows/pypsa-eur.yml@v1
+    uses: PyPSA/reusable-github-workflows/.github/workflows/pypsa-eur.yml@v1
     with:
       also-upgrade: linopy
       paths: |
@@ -248,7 +248,7 @@ on:
 permissions: {}
 jobs:
   link-check:
-    uses: PyPSA/reusable-workflows/.github/workflows/link-check.yml@v1
+    uses: PyPSA/reusable-github-workflows/.github/workflows/link-check.yml@v1
     permissions: {contents: read}
 ```
 
@@ -290,8 +290,9 @@ Do not use a PyPI API token. It is a long-lived secret in each repo.
 - **CodSpeed**: install the CodSpeed GitHub app on the repo and enable the repo on codspeed.io.
 - **Codecov**: enable the repo on codecov.io. The upload uses OIDC, so the repo needs no `CODECOV_TOKEN`.
 - **Secrets**: pass each secret by name. Do not use `secrets: inherit`.
-  The workflows accept only these secrets: `CDSAPI_TOKEN`, `EARTHDATAHUB_API_KEY`, `MSK_LICENSE` and `GUROBI_LIC`.
+  The workflows accept only these secrets: `CDSAPI_KEY`, `EARTHDATAHUB_API_KEY`, `MOSEKLM_LICENSE_FILE` and `GUROBI_LIC`.
   Each secret becomes an env var with the same name, but only in the steps that run the tests, benchmarks or PyPSA-Eur task.
+  The names are the env var names that the code reads. If your repo secret has another name, map it in the call, for example `CDSAPI_KEY: ${{ secrets.CDSAPI_TOKEN }}`.
   A secret that the caller does not pass is an empty env var.
   Other steps and third-party actions do not get the secrets, and a job gets only the secrets that it names.
   To add a secret to the list, open a PR in this repo.
@@ -299,7 +300,7 @@ Do not use a PyPI API token. It is a long-lived secret in each repo.
 
   ```yaml
       secrets:
-        CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+        CDSAPI_KEY: ${{ secrets.CDSAPI_TOKEN }}
       with:
         vars-env: CDSAPI_URL
   ```

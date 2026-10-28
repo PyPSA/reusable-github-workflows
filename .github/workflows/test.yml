@@ -88,11 +88,11 @@ on:
         default: .
         description: Directory of the package or pixi project.
     secrets:
-      CDSAPI_TOKEN:
+      CDSAPI_KEY:
         required: false
       EARTHDATAHUB_API_KEY:
         required: false
-      MSK_LICENSE:
+      MOSEKLM_LICENSE_FILE:
         required: false
       GUROBI_LIC:
         required: false
@@ -212,9 +212,9 @@ jobs:
           TEST_COMMAND: ${{ inputs.test-command }}
           COVERAGE_FILE: ${{ inputs.coverage-file }}
           COV_SOURCE: ${{ needs.build.outputs.cov-source }}
-          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
-          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          MOSEKLM_LICENSE_FILE: ${{ secrets.MOSEKLM_LICENSE_FILE }}
           GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         run: |
           set -euo pipefail

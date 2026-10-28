@@ -64,11 +64,11 @@ on:
         default: .
         description: Directory of the package, relative to the repo root.
     secrets:
-      CDSAPI_TOKEN:
+      CDSAPI_KEY:
         required: false
       EARTHDATAHUB_API_KEY:
         required: false
-      MSK_LICENSE:
+      MOSEKLM_LICENSE_FILE:
         required: false
       GUROBI_LIC:
         required: false
@@ -175,9 +175,9 @@ jobs:
       contents: read
       id-token: write
     secrets:
-      CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+      CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
       EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
-      MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+      MOSEKLM_LICENSE_FILE: ${{ secrets.MOSEKLM_LICENSE_FILE }}
       GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
     with:
       extras: ${{ fromJSON(inputs.test-inputs).extras || 'dev' }}

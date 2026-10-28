@@ -52,11 +52,11 @@ on:
         default: .
         description: Directory of the package, relative to the repo root.
     secrets:
-      CDSAPI_TOKEN:
+      CDSAPI_KEY:
         required: false
       EARTHDATAHUB_API_KEY:
         required: false
-      MSK_LICENSE:
+      MOSEKLM_LICENSE_FILE:
         required: false
       GUROBI_LIC:
         required: false
@@ -138,9 +138,9 @@ jobs:
         env:
           BENCHMARK_PATH: ${{ inputs.benchmark-path }}
           PYTEST_ARGS: ${{ inputs.pytest-args }}
-          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
-          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          MOSEKLM_LICENSE_FILE: ${{ secrets.MOSEKLM_LICENSE_FILE }}
           GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         with:
           mode: ${{ matrix.mode }}
@@ -232,9 +232,9 @@ jobs:
       - if: steps.base.outputs.present == 'true'
         working-directory: base/${{ inputs.working-directory }}
         env:
-          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
-          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          MOSEKLM_LICENSE_FILE: ${{ secrets.MOSEKLM_LICENSE_FILE }}
           GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         run: |
           set -euo pipefail
@@ -250,9 +250,9 @@ jobs:
         run: $RUN uv pip install --reinstall-package "$PACKAGE" "$WHEEL[$EXTRAS]"
       - working-directory: head/${{ inputs.working-directory }}
         env:
-          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
-          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          MOSEKLM_LICENSE_FILE: ${{ secrets.MOSEKLM_LICENSE_FILE }}
           GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         run: $RUN pytest "$BENCHMARK_PATH" --benchmark-only --benchmark-json="$RUNNER_TEMP/head.json" $PYTEST_ARGS
       - working-directory: head/${{ inputs.working-directory }}

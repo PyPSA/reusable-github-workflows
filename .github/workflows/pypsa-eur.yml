@@ -36,11 +36,11 @@ on:
         default: ""
         description: Space-separated repository or organization variable (`vars`) names to export to the job env.
     secrets:
-      CDSAPI_TOKEN:
+      CDSAPI_KEY:
         required: false
       EARTHDATAHUB_API_KEY:
         required: false
-      MSK_LICENSE:
+      MOSEKLM_LICENSE_FILE:
         required: false
       GUROBI_LIC:
         required: false
@@ -156,9 +156,9 @@ jobs:
         working-directory: pypsa-eur
         env:
           TASK: ${{ inputs.task }}
-          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
-          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          MOSEKLM_LICENSE_FILE: ${{ secrets.MOSEKLM_LICENSE_FILE }}
           GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         run: pixi run "$TASK"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
