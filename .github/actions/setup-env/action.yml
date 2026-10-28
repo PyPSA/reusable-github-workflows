@@ -114,7 +114,7 @@ runs:
         dir=$(cd "$(dirname "$manifest")" && { pwd -W 2>/dev/null || pwd; })
         echo "manifest=$dir/$(basename "$manifest")" >>"$GITHUB_OUTPUT"
 
-    - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
+    - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
       if: inputs.mode == 'library'
       with:
         pixi-version: ${{ inputs.pixi-version }}
@@ -165,7 +165,7 @@ runs:
         fi
         echo "run=$run" >>"$GITHUB_OUTPUT"
 
-    - uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
+    - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
       if: inputs.mode == 'project'
       with:
         pixi-version: ${{ inputs.pixi-version }}
