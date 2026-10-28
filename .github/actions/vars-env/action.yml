@@ -1,0 +1,27 @@
+name: Export variable env
+description: Export named repository or organization variables as env vars. A missing name fails.
+inputs:
+  vars-json:
+    description: Pass toJSON(vars).
+    default: '{}'
+  names:
+    description: Space-separated variable names.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Export variable env
+      shell: bash
+      env:
+        VARS_JSON: ${{ inputs.vars-json }}
+        NAMES: ${{ inputs.names }}
+      run: |
+        set -euo pipefail
+        set -f
+        for name in $NAMES; do
+          [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "::error::vars-env: invalid name '$name'" >&2; exit 1; }
+          jq -e --arg n "$name" 'has($n)' <<<"$VARS_JSON" >/dev/null || { echo "::error::vars-env: '$name' is not a variable" >&2; exit 1; }
+          value=$(jq -r --arg n "$name" '.[$n]' <<<"$VARS_JSON")
+          delim="EOF_$(openssl rand -hex 16)"
+          printf '%s<<%s\n%s\n%s\n' "$name" "$delim" "$value" "$delim" >>"$GITHUB_ENV"
+        done

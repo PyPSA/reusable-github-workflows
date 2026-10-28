@@ -14,13 +14,15 @@ The workflows use composite actions in `.github/actions/`.
 
 ## Versioning and pinning
 
-Each release has a tag `v1.x.y`. The `v1` tag moves to the latest `v1.x.y` release.
+Each release has a tag `v1.x.y`. The `v1` tag moves to the latest `v1.x.y` release on the default branch.
+Pre-release tags do not move `v1`.
 
 Pin a workflow in one of two ways:
 
 - Major tag: `uses: PyPSA/reusable-workflows/.github/workflows/test.yml@v1`.
 - Full commit SHA: `uses: PyPSA/reusable-workflows/.github/workflows/test.yml@<sha> # v1.2.3`.
   Use this form if your repo requires SHA pins (for example with zizmor).
+  Use this form for `release.yml`. The release run can publish to PyPI, and a SHA cannot move.
 
 The workflows load their composite actions with the self-repository syntax `uses: $/.github/actions/<name>`.
 GitHub resolves `$/` to this repo at the same commit as the called workflow.
@@ -50,6 +52,7 @@ Project mode starts when you set `pixi-task`. It uses the pixi manifest of the r
 | `extras` | string | `dev` | Comma-separated extras to install with the wheel. |
 | `pixi-add` | string | | Space-separated conda-forge specs to add to the env, e.g. `glpk coin-or-cbc` or `openjdk>=22`. |
 | `uv-locked` | boolean | `false` | Install dependencies from `uv.lock` before the wheel. |
+| `cooldown` | string | `7d` | Ignore conda and PyPI releases newer than this age (library mode). Empty disables. `uv-locked` installs ignore it. |
 | `matrix` | string | `auto` | `single`, `lean`, `full` or `auto` (`lean` on push and PR, `full` on schedule, dispatch and tags). |
 | `python-versions` | string | | JSON list that overrides the Python versions from the trove classifiers. |
 | `os-full` | string | `["ubuntu-latest","macos-latest","windows-latest"]` | JSON list of runners for the full matrix. |
@@ -61,10 +64,10 @@ Project mode starts when you set `pixi-task`. It uses the pixi manifest of the r
 | `pixi-version` | string | `v0.81.0` | Pixi version. |
 | `cache-path` | string | | Extra path to cache, e.g. cutouts. |
 | `cache-key` | string | | Key of the extra cache. |
-| `coverage` | boolean | `false` | Upload coverage to Codecov from the ubuntu leg with the last version. |
+| `coverage` | boolean | `false` | Upload coverage to Codecov from the ubuntu leg with the last version. A separate `coverage` job uploads with OIDC. |
 | `coverage-file` | string | `coverage.xml` | Coverage report file. |
 | `artifact-suffix` | string |  | Suffix of the `Packages` artifact name. Set it if `test.yml` runs more than once in a workflow run. |
-| `secret-env` | string | | Space-separated secret or variable names to export to the job env. |
+| `vars-env` | string | | Space-separated repository or organization variable (`vars`) names to export to the job env. |
 | `working-directory` | string | `.` | Directory of the package, relative to the repo root. |
 
 ```yaml
@@ -81,9 +84,10 @@ jobs:
     with:
       pixi-add: glpk coin-or-cbc
       coverage: true
-    secrets: inherit
-    permissions: {contents: read}
+    permissions: {contents: read, id-token: write}
 ```
+
+The caller job must give `id-token: write`, also without `coverage: true`. Only the `coverage` job uses it. The test jobs run the package code and do not get it.
 
 ## release.yml
 
@@ -129,12 +133,11 @@ on:
 permissions: {}
 jobs:
   release:
-    uses: PyPSA/reusable-workflows/.github/workflows/release.yml@v1
+    uses: PyPSA/reusable-workflows/.github/workflows/release.yml@<sha> # v1.x.y
     with:
       prepare-command: pixi run update-data
       testpypi: true
       test-inputs: '{"extras": "dev", "pixi-add": "openjdk>=22"}'
-    secrets: inherit
     permissions: {contents: write, id-token: write}
 ```
 
@@ -162,11 +165,12 @@ Runs benchmarks in a library-mode pixi env. Set `mode` to one of:
 | `extras` | string | `dev,benchmarks` | Comma-separated extras to install with the wheel. |
 | `python-version` | string | `3.13` | Python version of the benchmark env. |
 | `pixi-add` | string |  | Space-separated conda-forge specs to add to the env. |
+| `cooldown` | string | `7d` | Ignore conda and PyPI releases newer than this age. Empty disables. |
 | `pytest-args` | string |  | Extra pytest arguments. |
 | `codspeed-modes` | string | `["simulation","memory"]` | JSON list of CodSpeed modes for ubuntu-latest (codspeed mode only). |
 | `walltime-label` | string | `trigger:benchmark` | PR label that starts the walltime run on codspeed-macro. Non-PR events always run it (codspeed mode only). |
 | `fail-threshold` | string |  | Fail if a benchmark mean regresses by more than this percent. Empty never fails (compare mode only). |
-| `secret-env` | string |  | Space-separated secret or variable names to export to the job env. |
+| `vars-env` | string | | Space-separated repository or organization variable (`vars`) names to export to the job env. |
 | `working-directory` | string | `.` | Directory of the package, relative to the repo root. |
 
 ```yaml
@@ -183,7 +187,6 @@ jobs:
     with:
       mode: codspeed
       pixi-add: glpk coin-or-cbc
-    secrets: inherit
     permissions: {contents: read, pull-requests: write, id-token: write}
 ```
 
@@ -193,6 +196,7 @@ The caller job must give all three permissions for both modes.
 
 Runs a PyPSA-Eur pixi task with the caller package at the current commit (PR head SHA or `github.sha`).
 The `pypsa-eur-swap` action removes the package from the PyPSA-Eur pixi env and adds it from the git commit.
+The PyPSA-Eur `exclude-newer` cooldown stays. The swapped package and the `also-upgrade` packages skip it.
 The job caches `data/` weekly and `cutouts/` monthly. It uploads `logs/`, `.snakemake/log/` and `results/` for 3 days.
 If `paths` is set and no changed file matches, the job skips the run and reports success.
 
@@ -203,7 +207,7 @@ If `paths` is set and no changed file matches, the job skips the run and reports
 | `task` | string | `integration-tests-streamlined` | Pixi task to run in PyPSA-Eur. |
 | `also-upgrade` | string |  | Space-separated packages to upgrade after the swap, e.g. linopy. |
 | `paths` | string |  | Space- or newline-separated path globs. The run starts only if a change matches. Empty means always run. Schedule and dispatch events always run. |
-| `secret-env` | string |  | Space-separated secret or variable names to export to the job env. |
+| `vars-env` | string | | Space-separated repository or organization variable (`vars`) names to export to the job env. |
 
 ```yaml
 name: PyPSA-Eur
@@ -221,7 +225,6 @@ jobs:
       paths: |
         pypsa/**
         pyproject.toml
-    secrets: inherit
     permissions: {contents: read, pull-requests: read}
 ```
 
@@ -283,7 +286,26 @@ Do not use a PyPI API token. It is a long-lived secret in each repo.
 - **PyPI**: on pypi.org, add a trusted publisher for the caller repo, the caller release workflow file (for example `release.yml`) and the environment `pypi`.
 - **TestPyPI**: for `testpypi: true`, add the same trusted publisher on test.pypi.org with the environment `testpypi`.
 - **Environments**: create the GitHub environments `pypi` and `testpypi`. Add protection rules if you want a manual approval.
-- **PyPSA bot** (only for `prepare-command`): set the variable `PYPSA_BOT_ID` (app ID) and the secret `PYPSA_BOT_PRIVATE_KEY`. Install the app on the repo. The app must be able to push to the release branch and to move tags (check branch and tag rulesets).
+- **PyPSA bot** (only for `prepare-command`): create the GitHub environment `release`. Limit its deployment tags to `v*`. Set the environment secret `PYPSA_BOT_PRIVATE_KEY` and the variable `PYPSA_BOT_ID` (app ID). Only the `prepare` job can then read the key. Install the app on the repo. The app must be able to push to the release branch and to move tags (check branch and tag rulesets).
 - **CodSpeed**: install the CodSpeed GitHub app on the repo and enable the repo on codspeed.io.
-- **Codecov**: set the secret `CODECOV_TOKEN` for `coverage: true`.
-- **Secrets**: use `secrets: inherit` and list the names in `secret-env`, for example `secret-env: CDSAPI_TOKEN`.
+- **Codecov**: enable the repo on codecov.io. The upload uses OIDC, so the repo needs no `CODECOV_TOKEN`.
+- **Secrets**: pass each secret by name. Do not use `secrets: inherit`.
+  The workflows accept only these secrets: `CDSAPI_TOKEN`, `EARTHDATAHUB_API_KEY`, `MSK_LICENSE` and `GUROBI_LIC`.
+  Each secret becomes an env var with the same name, but only in the steps that run the tests, benchmarks or PyPSA-Eur task.
+  A secret that the caller does not pass is an empty env var.
+  Other steps and third-party actions do not get the secrets, and a job gets only the secrets that it names.
+  To add a secret to the list, open a PR in this repo.
+- **Variables**: list repository or organization variables (`vars`) in `vars-env`. The workflows export them to the job env.
+
+  ```yaml
+      secrets:
+        CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+      with:
+        vars-env: CDSAPI_URL
+  ```
+
+## Network monitoring
+
+Each job starts with `step-security/harden-runner` in audit mode. It logs the outbound network connections of the job, with a link to a report in the job summary.
+The plan is to switch to block mode: the job can then reach only the listed hosts, so a compromised dependency cannot send secrets away.
+Harden-runner sends the network events to StepSecurity. The free tier covers public repos. On macOS and Windows runners it supports only audit mode. The CodSpeed `codspeed-macro` runner skips it.

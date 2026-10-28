@@ -2,15 +2,6 @@ rules:
   github-env:
     ignore:
       - action.yml
-  overprovisioned-secrets:
-    ignore:
-      - test.yml
-      - benchmark.yml
-      - pypsa-eur.yml
-  secrets-inherit:
-    ignore:
-      - ci.yml
-      - release.yml
   self-repository:
     ignore:
       - ci.yml

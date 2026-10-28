@@ -12,14 +12,24 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: true
       - name: Move major tag
         env:
           TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::$TAG is not a final release tag. The major tag does not move."
+            exit 0
+          fi
+          git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/$DEFAULT_BRANCH" || { echo "::error::$TAG is not on $DEFAULT_BRANCH" >&2; exit 1; }
           major="${TAG%%.*}"
           git tag -f "$major" "$GITHUB_SHA"
           git push -f origin "refs/tags/$major"

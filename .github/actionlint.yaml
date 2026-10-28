@@ -3,3 +3,6 @@ paths:
     ignore:
       - 'specifying action "\$/[^"]+" in invalid format because ref is missing'
       - 'reusable workflow call "\$/[^"]+" at "uses" is not following the format'
+  .github/workflows/release.yml:
+    ignore:
+      - 'property "pypsa_bot_private_key" is not defined'

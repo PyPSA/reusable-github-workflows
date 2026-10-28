@@ -23,6 +23,10 @@ on:
         type: string
         default: ""
         description: Space-separated conda-forge specs to add to the env.
+      cooldown:
+        type: string
+        default: 7d
+        description: Ignore conda and PyPI releases newer than this age, e.g. 7d. Empty disables. uv-locked installs ignore it.
       pytest-args:
         type: string
         default: ""
@@ -39,14 +43,23 @@ on:
         type: string
         default: ""
         description: Fail if a benchmark mean regresses by more than this percent. Empty never fails (compare mode only).
-      secret-env:
+      vars-env:
         type: string
         default: ""
-        description: Space-separated secret or variable names to export to the job env.
+        description: Space-separated repository or organization variable (`vars`) names to export to the job env.
       working-directory:
         type: string
         default: .
         description: Directory of the package, relative to the repo root.
+    secrets:
+      CDSAPI_TOKEN:
+        required: false
+      EARTHDATAHUB_API_KEY:
+        required: false
+      MSK_LICENSE:
+        required: false
+      GUROBI_LIC:
+        required: false
 
 permissions: {}
 
@@ -59,6 +72,13 @@ jobs:
     outputs:
       legs: ${{ steps.legs.outputs.legs }}
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - if: github.event_name == 'pull_request_target'
+        run: |
+          echo "::error::pull_request_target runs fork code with secrets. Use pull_request." >&2
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -92,6 +112,10 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.build.outputs.legs) }}
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        if: matrix.runner != 'codspeed-macro'
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -105,15 +129,19 @@ jobs:
           python-version: ${{ inputs.python-version }}
           pixi-add: ${{ inputs.pixi-add }}
           extras: ${{ inputs.extras }}
+          cooldown: ${{ inputs.cooldown }}
           wheel-dir: ${{ runner.temp }}/wheels
-          secrets-json: ${{ toJSON(secrets) }}
           vars-json: ${{ toJSON(vars) }}
-          secret-env: ${{ inputs.secret-env }}
+          vars-env: ${{ inputs.vars-env }}
           working-directory: ${{ inputs.working-directory }}
       - uses: CodSpeedHQ/action@c4fd08a3a159bd0cc208da1e0edf32b8c47d75e5 # v5.4.0
         env:
           BENCHMARK_PATH: ${{ inputs.benchmark-path }}
           PYTEST_ARGS: ${{ inputs.pytest-args }}
+          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
+          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         with:
           mode: ${{ matrix.mode }}
           working-directory: ${{ inputs.working-directory }}
@@ -131,6 +159,13 @@ jobs:
       EXTRAS: ${{ inputs.extras }}
       IS_PR: ${{ github.event_name == 'pull_request' }}
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+      - if: github.event_name == 'pull_request_target'
+        run: |
+          echo "::error::pull_request_target runs fork code with secrets. Use pull_request." >&2
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -189,13 +224,18 @@ jobs:
           python-version: ${{ inputs.python-version }}
           pixi-add: ${{ inputs.pixi-add }}
           extras: ${{ inputs.extras }}
+          cooldown: ${{ inputs.cooldown }}
           wheel-dir: ${{ steps.wheels.outputs.first }}
-          secrets-json: ${{ toJSON(secrets) }}
           vars-json: ${{ toJSON(vars) }}
-          secret-env: ${{ inputs.secret-env }}
+          vars-env: ${{ inputs.vars-env }}
           working-directory: ${{ steps.base.outputs.present == 'true' && 'base' || 'head' }}/${{ inputs.working-directory }}
       - if: steps.base.outputs.present == 'true'
         working-directory: base/${{ inputs.working-directory }}
+        env:
+          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
+          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         run: |
           set -euo pipefail
           if [ -e "$BENCHMARK_PATH" ]; then
@@ -209,6 +249,11 @@ jobs:
           WHEEL: ${{ steps.wheels.outputs.head }}
         run: $RUN uv pip install --reinstall-package "$PACKAGE" "$WHEEL[$EXTRAS]"
       - working-directory: head/${{ inputs.working-directory }}
+        env:
+          CDSAPI_TOKEN: ${{ secrets.CDSAPI_TOKEN }}
+          EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
+          MSK_LICENSE: ${{ secrets.MSK_LICENSE }}
+          GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         run: $RUN pytest "$BENCHMARK_PATH" --benchmark-only --benchmark-json="$RUNNER_TEMP/head.json" $PYTEST_ARGS
       - working-directory: head/${{ inputs.working-directory }}
         run: |

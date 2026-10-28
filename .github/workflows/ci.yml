@@ -16,17 +16,27 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: uvx --from actionlint-py actionlint
-      - run: uvx zizmor --offline .github
+        with:
+          version: 0.13.0
+      - run: uvx --from actionlint-py==1.7.12.25 actionlint
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: uvx zizmor@1.30.1 .github
 
   matrix-action:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
       - id: lean
         uses: $/.github/actions/matrix
         with:
@@ -50,7 +60,7 @@ jobs:
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
-    secrets: inherit
+      id-token: write
     with:
       working-directory: tests/fixture-package
       pixi-add: glpk
@@ -60,6 +70,7 @@ jobs:
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
+      id-token: write
     with:
       working-directory: tests/fixture-project
       pixi-task: test
@@ -72,7 +83,6 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write
-    secrets: inherit
     with:
       mode: compare
       benchmark-path: benchmarks
@@ -90,7 +100,6 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    secrets: inherit
     with:
       dry-run: true
       test: false
@@ -103,7 +112,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    secrets: inherit
     with:
       package: pypsa
       repository: PyPSA/PyPSA

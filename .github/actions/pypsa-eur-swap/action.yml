@@ -11,7 +11,7 @@ inputs:
     description: Commit SHA (40 hex chars) or branch to install.
     required: true
   also-upgrade:
-    description: Space-separated packages to upgrade afterwards.
+    description: Space-separated packages to upgrade afterwards. They and the swapped package skip the pypsa-eur exclude-newer cooldown.
     default: ''
   working-directory:
     description: pypsa-eur checkout.
@@ -30,7 +30,16 @@ runs:
       run: |
         set -euo pipefail
         PACKAGE="${PACKAGE:-${GITHUB_REPOSITORY#*/}}"
-        sed -i.bak '/^exclude-newer[[:space:]]*=/d' pixi.toml && rm pixi.toml.bak
+        awk -v pkgs="$PACKAGE $ALSO_UPGRADE" '
+          function exempt() { for (i = 1; i <= n; i++) print "\"" p[i] "\" = \"0d\""; done = 1 }
+          BEGIN { n = split(pkgs, p, " "); for (i = 1; i <= n; i++) skip[p[i]] = 1 }
+          /^\[/ { section = $1 }
+          section == "[exclude-newer]" { key = $1; gsub(/"/, "", key); if (key in skip) next }
+          { print }
+          $1 == "[exclude-newer]" { exempt() }
+          END { if (!done) { print ""; print "[exclude-newer]"; exempt() } }
+        ' pixi.toml >pixi.toml.new
+        mv pixi.toml.new pixi.toml
         pixi remove "$PACKAGE"
         if [[ "$REV" =~ ^[0-9a-f]{40}$ ]]; then ref_flag=--rev; else ref_flag=--branch; fi
         pixi add --pypi --git "https://github.com/$REPOSITORY.git" "$PACKAGE" "$ref_flag" "$REV"

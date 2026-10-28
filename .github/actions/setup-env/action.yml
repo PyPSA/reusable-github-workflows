@@ -16,6 +16,9 @@ inputs:
   uv-locked:
     description: Library mode only. Install dependencies from uv.lock with uv sync before the wheel.
     default: 'false'
+  cooldown:
+    description: Library mode only. Ignore conda and PyPI releases newer than this age, e.g. 7d. Empty disables. uv-locked installs ignore it.
+    default: 7d
   wheel-dir:
     description: Directory, relative to working-directory or absolute, that holds exactly one wheel.
     default: dist
@@ -28,14 +31,11 @@ inputs:
   pixi-version:
     description: pixi version.
     default: v0.81.0
-  secrets-json:
-    description: Pass toJSON(secrets).
-    default: '{}'
   vars-json:
     description: Pass toJSON(vars).
     default: '{}'
-  secret-env:
-    description: Space-separated secret or variable names to export as env vars.
+  vars-env:
+    description: Space-separated variable names to export as env vars.
     default: ''
   working-directory:
     description: Directory of the caller package or project.
@@ -54,12 +54,11 @@ runs:
         echo "::error::mode must be library or project" >&2
         exit 1
 
-    - if: inputs.secret-env != ''
-      uses: $/.github/actions/secret-env
+    - if: inputs.vars-env != ''
+      uses: $/.github/actions/vars-env
       with:
-        secrets-json: ${{ inputs.secrets-json }}
         vars-json: ${{ inputs.vars-json }}
-        names: ${{ inputs.secret-env }}
+        names: ${{ inputs.vars-env }}
 
     - name: Prepare library environment
       id: library-prep
@@ -68,9 +67,11 @@ runs:
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
         PIXI_ADD: ${{ inputs.pixi-add }}
+        COOLDOWN: ${{ inputs.cooldown }}
       run: |
         set -euo pipefail
         [ -n "$PYTHON_VERSION" ] || { echo "::error::python-version is required in library mode" >&2; exit 1; }
+        [[ "$COOLDOWN" =~ ^([0-9]+d)?$ ]] || { echo "::error::cooldown must be empty or a number of days such as 7d, got '$COOLDOWN'" >&2; exit 1; }
         case "$RUNNER_OS-$RUNNER_ARCH" in
           Linux-X64) platform=linux-64 ;;
           Linux-ARM64) platform=linux-aarch64 ;;
@@ -87,6 +88,7 @@ runs:
         done
         mkdir -p "$temp/env"
         printf '[workspace]\nname = "env"\nchannels = [%s]\nplatforms = ["%s"]\n' "$channels" "$platform" >"$temp/env/pixi.toml"
+        [ -z "$COOLDOWN" ] || printf 'exclude-newer = "%s"\n' "$COOLDOWN" >>"$temp/env/pixi.toml"
         cat "$temp/env/pixi.toml"
         {
           echo "PIXI_CACHE_DIR=$temp/pixi-cache"
@@ -140,6 +142,7 @@ runs:
         EXTRAS: ${{ inputs.extras }}
         UV_LOCKED: ${{ inputs.uv-locked }}
         WHEEL_DIR: ${{ inputs.wheel-dir }}
+        COOLDOWN: ${{ inputs.cooldown }}
       run: |
         set -euo pipefail
         read -ra specs <<<"$PIXI_ADD"
@@ -156,10 +159,9 @@ runs:
           UV_PROJECT_ENVIRONMENT="$(dirname "$MANIFEST")/.pixi/envs/default" \
             $run uv sync --locked --inexact --no-install-project ${extra_args[@]+"${extra_args[@]}"}
           $run uv pip install --no-deps "$wheel"
-        elif [ -n "$EXTRAS" ]; then
-          $run uv pip install "$wheel[$EXTRAS]"
         else
-          $run uv pip install "$wheel"
+          [ -z "$COOLDOWN" ] || export UV_EXCLUDE_NEWER="$COOLDOWN"
+          $run uv pip install "$wheel${EXTRAS:+[$EXTRAS]}"
         fi
         echo "run=$run" >>"$GITHUB_OUTPUT"
 
