@@ -83,7 +83,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: hynek/build-and-inspect-python-package@2abe76da66d0a6a4a227101f9348ee855797cfa5 # v3.0.1
+      - uses: hynek/build-and-inspect-python-package@67230f7b8410ae0052b39c1efc89d89fff43ff10 # v3.0.2
         with:
           path: ${{ inputs.working-directory }}
           skip-sdist: true
@@ -134,7 +134,7 @@ jobs:
           vars-json: ${{ toJSON(vars) }}
           vars-env: ${{ inputs.vars-env }}
           working-directory: ${{ inputs.working-directory }}
-      - uses: CodSpeedHQ/action@c4fd08a3a159bd0cc208da1e0edf32b8c47d75e5 # v5.4.0
+      - uses: CodSpeedHQ/action@78102a468f96d8e0ccb92d0ec49425753fc42062 # v5.6.0
         env:
           BENCHMARK_PATH: ${{ inputs.benchmark-path }}
           PYTEST_ARGS: ${{ inputs.pytest-args }}
@@ -189,7 +189,7 @@ jobs:
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: hynek/build-and-inspect-python-package@2abe76da66d0a6a4a227101f9348ee855797cfa5 # v3.0.1
+      - uses: hynek/build-and-inspect-python-package@67230f7b8410ae0052b39c1efc89d89fff43ff10 # v3.0.2
         id: head-build
         with:
           path: head/${{ inputs.working-directory }}
@@ -204,7 +204,7 @@ jobs:
           cp "$DIST"/*.whl "$RUNNER_TEMP/wheels/head/"
           rm -rf /tmp/baipp
           echo "wheel=$(ls "$RUNNER_TEMP"/wheels/head/*.whl)" >> "$GITHUB_OUTPUT"
-      - uses: hynek/build-and-inspect-python-package@2abe76da66d0a6a4a227101f9348ee855797cfa5 # v3.0.1
+      - uses: hynek/build-and-inspect-python-package@67230f7b8410ae0052b39c1efc89d89fff43ff10 # v3.0.2
         id: base-build
         if: steps.base.outputs.present == 'true'
         with:
