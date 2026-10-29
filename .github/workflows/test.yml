@@ -210,7 +210,7 @@ jobs:
           PIXI_TASK: ${{ inputs.pixi-task }}
           PYTEST_ARGS: ${{ inputs.pytest-args }}
           TEST_COMMAND: ${{ inputs.test-command }}
-          COVERAGE_FILE: ${{ inputs.coverage-file }}
+          COV_REPORT_FILE: ${{ inputs.coverage-file }}
           COV_SOURCE: ${{ needs.build.outputs.cov-source }}
           CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
@@ -224,7 +224,7 @@ jobs:
             cmd="$PIXI_TASK $PYTEST_ARGS"
           else
             cmd="pytest $PYTEST_ARGS"
-            [ "$COVERAGE_LEG" != true ] || cmd="$cmd --cov=${COV_SOURCE//-/_} --cov-report=xml:$COVERAGE_FILE"
+            [ "$COVERAGE_LEG" != true ] || cmd="$cmd --cov=${COV_SOURCE//-/_} --cov-report=xml:$COV_REPORT_FILE"
           fi
           echo "$RUN $cmd"
           eval "$RUN $cmd"
@@ -255,8 +255,8 @@ jobs:
           path: ${{ runner.temp }}/coverage
       - id: report
         env:
-          COVERAGE_FILE: ${{ inputs.coverage-file }}
-        run: echo "path=$RUNNER_TEMP/coverage/$(basename "$COVERAGE_FILE")" >> "$GITHUB_OUTPUT"
+          COV_REPORT_FILE: ${{ inputs.coverage-file }}
+        run: echo "path=$RUNNER_TEMP/coverage/$(basename "$COV_REPORT_FILE")" >> "$GITHUB_OUTPUT"
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ${{ steps.report.outputs.path }}

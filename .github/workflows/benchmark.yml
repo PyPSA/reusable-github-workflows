@@ -195,6 +195,15 @@ jobs:
           path: head/${{ inputs.working-directory }}
           skip-sdist: true
           upload-name-suffix: -benchmark-head
+      - id: head-wheel
+        env:
+          DIST: ${{ steps.head-build.outputs.dist }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wheels/head" "$RUNNER_TEMP/wheels/base"
+          cp "$DIST"/*.whl "$RUNNER_TEMP/wheels/head/"
+          rm -rf /tmp/baipp
+          echo "wheel=$(ls "$RUNNER_TEMP"/wheels/head/*.whl)" >> "$GITHUB_OUTPUT"
       - uses: hynek/build-and-inspect-python-package@2abe76da66d0a6a4a227101f9348ee855797cfa5 # v3.0.1
         id: base-build
         if: steps.base.outputs.present == 'true'
@@ -204,20 +213,16 @@ jobs:
           upload-name-suffix: -benchmark-base
       - id: wheels
         env:
-          HEAD_DIST: ${{ steps.head-build.outputs.dist }}
           BASE_DIST: ${{ steps.base-build.outputs.dist }}
           BASE_PRESENT: ${{ steps.base.outputs.present }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/wheels/head" "$RUNNER_TEMP/wheels/base"
-          cp "$HEAD_DIST"/*.whl "$RUNNER_TEMP/wheels/head/"
-          first=head
+          first="head"
           if [ "$BASE_PRESENT" = true ]; then
             cp "$BASE_DIST"/*.whl "$RUNNER_TEMP/wheels/base/"
-            first=base
+            first="base"
           fi
           echo "first=$RUNNER_TEMP/wheels/$first" >> "$GITHUB_OUTPUT"
-          echo "head=$(ls "$RUNNER_TEMP"/wheels/head/*.whl)" >> "$GITHUB_OUTPUT"
       - uses: $/.github/actions/setup-env
         with:
           mode: library
@@ -238,23 +243,27 @@ jobs:
           GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
         run: |
           set -euo pipefail
+          read -ra pytest_args <<< "$PYTEST_ARGS"
           if [ -e "$BENCHMARK_PATH" ]; then
-            $RUN pytest "$BENCHMARK_PATH" --benchmark-only --benchmark-json="$RUNNER_TEMP/base.json" $PYTEST_ARGS
+            $RUN pytest "$BENCHMARK_PATH" --benchmark-only --benchmark-json="$RUNNER_TEMP/base.json" "${pytest_args[@]}"
           else
             echo "Base has no $BENCHMARK_PATH. Skip the base run."
           fi
       - if: steps.base.outputs.present == 'true'
         env:
           PACKAGE: ${{ steps.head-build.outputs.package_name }}
-          WHEEL: ${{ steps.wheels.outputs.head }}
-        run: $RUN uv pip install --reinstall-package "$PACKAGE" "$WHEEL[$EXTRAS]"
+          WHEEL: ${{ steps.head-wheel.outputs.wheel }}
+        run: $RUN uv pip install --reinstall-package "$PACKAGE" "${WHEEL}[$EXTRAS]"
       - working-directory: head/${{ inputs.working-directory }}
         env:
           CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
           EARTHDATAHUB_API_KEY: ${{ secrets.EARTHDATAHUB_API_KEY }}
           MOSEKLM_LICENSE_FILE: ${{ secrets.MOSEKLM_LICENSE_FILE }}
           GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
-        run: $RUN pytest "$BENCHMARK_PATH" --benchmark-only --benchmark-json="$RUNNER_TEMP/head.json" $PYTEST_ARGS
+        run: |
+          set -euo pipefail
+          read -ra pytest_args <<< "$PYTEST_ARGS"
+          $RUN pytest "$BENCHMARK_PATH" --benchmark-only --benchmark-json="$RUNNER_TEMP/head.json" "${pytest_args[@]}"
       - working-directory: head/${{ inputs.working-directory }}
         run: |
           set -euo pipefail
