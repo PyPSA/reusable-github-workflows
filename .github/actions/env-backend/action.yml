@@ -1,0 +1,44 @@
+name: Detect environment backend
+description: Pick the environment tool from the repo. A pixi manifest (manifest-path, pixi.toml, or a [tool.pixi] table in pyproject.toml) selects pixi, else uv.
+inputs:
+  manifest-path:
+    description: pixi manifest, relative to working-directory. Set forces pixi.
+    default: ''
+  working-directory:
+    description: Directory of the package or project.
+    default: .
+outputs:
+  backend:
+    description: pixi or uv.
+    value: ${{ steps.detect.outputs.backend }}
+  manifest:
+    description: Absolute pixi manifest path. Empty for uv.
+    value: ${{ steps.detect.outputs.manifest }}
+runs:
+  using: composite
+  steps:
+    - name: Detect backend
+      id: detect
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MANIFEST_PATH: ${{ inputs.manifest-path }}
+      run: |
+        set -euo pipefail
+        manifest="$MANIFEST_PATH"
+        if [ -z "$manifest" ]; then
+          if [ -f pixi.toml ]; then
+            manifest=pixi.toml
+          elif [ -f pyproject.toml ] && grep -Eq '^\[tool\.pixi[].]' pyproject.toml; then
+            manifest=pyproject.toml
+          fi
+        fi
+        if [ -z "$manifest" ]; then
+          echo "backend=uv" >>"$GITHUB_OUTPUT"
+          echo "manifest=" >>"$GITHUB_OUTPUT"
+          exit 0
+        fi
+        [ -f "$manifest" ] || { echo "::error::manifest $manifest not found" >&2; exit 1; }
+        dir=$(cd "$(dirname "$manifest")" && { pwd -W 2>/dev/null || pwd; })
+        echo "backend=pixi" >>"$GITHUB_OUTPUT"
+        echo "manifest=$dir/$(basename "$manifest")" >>"$GITHUB_OUTPUT"

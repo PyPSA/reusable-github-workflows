@@ -14,19 +14,19 @@ on:
       extras:
         type: string
         default: dev,benchmarks
-        description: Comma-separated extras to install with the wheel.
+        description: Comma-separated extras to install with the wheel (uv repos).
       python-version:
         type: string
         default: "3.13"
-        description: Python version of the benchmark env.
-      pixi-add:
-        type: string
-        default: ""
-        description: Space-separated conda-forge specs to add to the env.
+        description: Python version of the benchmark env (uv repos).
+      uv-locked:
+        type: boolean
+        default: true
+        description: Install dependencies from uv.lock before the wheel (uv repos). Set false for a repo without uv.lock.
       cooldown:
         type: string
         default: 7d
-        description: Ignore conda and PyPI releases newer than this age, e.g. 7d. Empty disables. uv-locked installs ignore it.
+        description: Ignore PyPI releases newer than this age, e.g. 7d (uv repos without uv-locked). Empty disables.
       pytest-args:
         type: string
         default: ""
@@ -127,8 +127,8 @@ jobs:
         with:
           mode: library
           python-version: ${{ inputs.python-version }}
-          pixi-add: ${{ inputs.pixi-add }}
           extras: ${{ inputs.extras }}
+          uv-locked: ${{ inputs.uv-locked }}
           cooldown: ${{ inputs.cooldown }}
           wheel-dir: ${{ runner.temp }}/wheels
           vars-json: ${{ toJSON(vars) }}
@@ -223,12 +223,13 @@ jobs:
             first="base"
           fi
           echo "first=$RUNNER_TEMP/wheels/$first" >> "$GITHUB_OUTPUT"
-      - uses: $/.github/actions/setup-env
+      - id: env
+        uses: $/.github/actions/setup-env
         with:
           mode: library
           python-version: ${{ inputs.python-version }}
-          pixi-add: ${{ inputs.pixi-add }}
           extras: ${{ inputs.extras }}
+          uv-locked: ${{ inputs.uv-locked }}
           cooldown: ${{ inputs.cooldown }}
           wheel-dir: ${{ steps.wheels.outputs.first }}
           vars-json: ${{ toJSON(vars) }}
@@ -253,7 +254,14 @@ jobs:
         env:
           PACKAGE: ${{ steps.head-build.outputs.package_name }}
           WHEEL: ${{ steps.head-wheel.outputs.wheel }}
-        run: $RUN uv pip install --reinstall-package "$PACKAGE" "${WHEEL}[$EXTRAS]"
+          BACKEND: ${{ steps.env.outputs.backend }}
+        run: |
+          set -euo pipefail
+          if [ "$BACKEND" = pixi ]; then
+            $RUN uv pip install --no-deps --reinstall-package "$PACKAGE" "$WHEEL"
+          else
+            $RUN uv pip install --reinstall-package "$PACKAGE" "${WHEEL}[${EXTRAS//[[:space:]]/}]"
+          fi
       - working-directory: head/${{ inputs.working-directory }}
         env:
           CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}

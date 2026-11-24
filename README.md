@@ -6,7 +6,7 @@ The workflows use composite actions in `.github/actions/`.
 
 | Workflow | Purpose |
 | --- | --- |
-| [`test.yml`](#testyml) | Test matrix in a pixi env (library mode or project mode). |
+| [`test.yml`](#testyml) | Test matrix in a uv venv (uv repos) or the repo's pixi env (pixi repos). |
 | [`release.yml`](#releaseyml) | Tag-to-release chain: prepare, test, build, TestPyPI, GitHub release, PyPI. |
 | [`benchmark.yml`](#benchmarkyml) | CodSpeed benchmarks, or a pytest-benchmark comparison of base and head. |
 | [`pypsa-eur.yml`](#pypsa-euryml) | Run PyPSA-Eur with the caller package at the current commit. |
@@ -43,24 +43,30 @@ updates:
 
 ## test.yml
 
-Runs the tests in a pixi env on a matrix of OS and Python versions (library mode) or pixi environments (project mode).
-Library mode builds a wheel with `hynek/build-and-inspect-python-package` and installs it with uv into a throwaway pixi env.
-Project mode starts when you set `pixi-task`. It uses the pixi manifest of the repo.
+Runs the tests on a matrix of OS and either Python versions (uv repos) or pixi environments (pixi repos).
+Library mode, the default, builds a wheel with `hynek/build-and-inspect-python-package` and installs it into the env. Project mode (`pixi-task` set) runs a pixi task in the repo env as is.
+The environment follows the repo:
+
+- pixi repo (a `pixi.toml`, or a `[tool.pixi]` table in `pyproject.toml`): the repo's pixi env from its lock file. Library mode installs the wheel into it with `--no-deps`, so the env must already hold the test dependencies, and `extras`, `uv-locked` and `cooldown` do not apply.
+- uv repo (any other): a plain uv venv from `astral-sh/setup-uv`, with no pixi. The venv is on `PATH` and `RUN` is empty. With `uv-locked`, the default, `uv sync --locked` installs the dependencies and `extras` from `uv.lock` and the wheel follows with `--no-deps`. A repo without `uv.lock` sets `uv-locked: false`.
+
+A package that needs conda-only dependencies, such as the `glpk` solver, adds them to a `pixi.toml` and so becomes a pixi repo.
+
+uv runs at its latest release unless the repo pins `required-version` in `uv.toml` or `[tool.uv]`, so a CI failure that starts with a new uv release likely comes from uv.
 
 | Input | Type | Default | Description |
 | --- | --- | --- | --- |
-| `extras` | string | `dev` | Comma-separated extras to install with the wheel. |
-| `pixi-add` | string | | Space-separated conda-forge specs to add to the env, e.g. `glpk coin-or-cbc` or `openjdk>=22`. |
-| `uv-locked` | boolean | `false` | Install dependencies from `uv.lock` before the wheel. |
-| `cooldown` | string | `7d` | Ignore conda and PyPI releases newer than this age (library mode). Empty disables. `uv-locked` installs ignore it. |
+| `extras` | string | `dev` | uv repos: comma-separated extras to install with the wheel. |
+| `uv-locked` | boolean | `true` | uv repos: install dependencies from `uv.lock` before the wheel. Set `false` for a repo without `uv.lock`. |
+| `cooldown` | string | `7d` | uv repos with `uv-locked: false`: ignore PyPI releases newer than this age. Empty disables. |
 | `matrix` | string | `auto` | `single`, `lean`, `full` or `auto` (`lean` on push and PR, `full` on schedule, dispatch and tags). |
-| `python-versions` | string | | JSON list that overrides the Python versions from the trove classifiers. |
+| `python-versions` | string | | uv repos: JSON list that overrides the Python versions from the trove classifiers. |
 | `os-full` | string | `["ubuntu-latest","macos-latest","windows-latest"]` | JSON list of runners for the full matrix. |
 | `pytest-args` | string | | Extra pytest arguments. |
 | `test-command` | string | | Command that replaces the default pytest command. |
 | `pixi-task` | string | | Pixi task to run. Setting it switches to project mode. |
-| `pixi-environments` | string | `["default"]` | Project mode: JSON list of pixi environments, or a regex such as `^py3`. |
-| `manifest-path` | string | | Project mode: path of the pixi manifest. |
+| `pixi-environments` | string | `["default"]` | pixi repos: JSON list of pixi environments, or a regex such as `^py3`. |
+| `manifest-path` | string | | Path of the pixi manifest. Default `pixi.toml`, else `pyproject.toml` with a `[tool.pixi]` table. Setting it makes the repo a pixi repo. |
 | `pixi-version` | string | `v0.81.0` | Pixi version. |
 | `cache-path` | string | | Extra path to cache, e.g. cutouts. |
 | `cache-key` | string | | Key of the extra cache. |
@@ -82,7 +88,6 @@ jobs:
   test:
     uses: PyPSA/reusable-github-workflows/.github/workflows/test.yml@v1
     with:
-      pixi-add: glpk coin-or-cbc
       coverage: true
     permissions: {contents: read, id-token: write}
 ```
@@ -96,7 +101,7 @@ Runs the release chain for a tag push. The jobs are:
 1. `prepare` (only if `prepare-command` is set and `dry-run` is false). If the tag does not point at the prepare commit, the job runs the command, commits the changes with the PyPSA bot and moves the tag to the new commit. The new tag starts a new run. The first run then stops.
 2. `test`: calls `test.yml` with the values in `test-inputs`.
 3. `build`: builds the sdist and wheel (artifact `Packages-release`). The job fails if the wheel version is not the tag without the leading `v`. Use PEP 440 tags, for example `v1.2.0rc1`.
-4. `testpypi` and `smoke` (only if `testpypi: true`): upload to TestPyPI, then install the package from TestPyPI in a fresh env and run `smoke-command`. The install retries for up to 5 minutes.
+4. `testpypi` and `smoke` (only if `testpypi: true`): upload to TestPyPI, then install the package from TestPyPI in a fresh env and run `smoke-command`. The install retries for up to 5 minutes. The smoke env follows the repo, as in `test.yml`.
 5. `github-release`: creates the GitHub release. A tag with an `a`, `b` or `rc` suffix makes a pre-release.
 6. `publish` (only if `pypi: true`): uploads to PyPI with trusted publishing.
 
@@ -137,7 +142,7 @@ jobs:
     with:
       prepare-command: pixi run update-data
       testpypi: true
-      test-inputs: '{"extras": "dev", "pixi-add": "openjdk>=22"}'
+      test-inputs: '{"extras": "dev", "uv-locked": false}'
     permissions: {contents: write, id-token: write}
 ```
 
@@ -146,26 +151,26 @@ GitHub checks the permissions of all called jobs before the run starts.
 
 ## benchmark.yml
 
-Runs benchmarks in a library-mode pixi env. Set `mode` to one of:
+Runs benchmarks in a library-mode env that follows the repo, as in `test.yml`: the `default` pixi env of a pixi repo, else a uv venv. Set `mode` to one of:
 
 - `codspeed`: runs `pytest <benchmark-path> --codspeed` with `CodSpeedHQ/action`, once per mode in `codspeed-modes`.
   A walltime run on the `codspeed-macro` runner starts on non-PR events, and on PRs with the label `walltime-label`.
   The jobs use OIDC (`id-token: write`) and never block a merge (`continue-on-error`).
-  The `benchmarks` extra must contain `pytest-codspeed`.
+  The `benchmarks` extra, or the pixi env, must contain `pytest-codspeed`.
 - `compare`: on a PR, runs pytest-benchmark at the base commit and at the head commit on the same runner.
   The job writes `pytest-benchmark compare` to the step summary and to a sticky PR comment (same-repo PRs only).
   If you set `fail-threshold`, the job fails when a benchmark mean is slower by more than that percent.
   On other events, the job runs the head commit only and writes the summary.
-  The `benchmarks` extra must contain `pytest-benchmark`.
+  The `benchmarks` extra, or the pixi env, must contain `pytest-benchmark`.
 
 | Input | Type | Default | Description |
 | --- | --- | --- | --- |
 | `mode` | string | `codspeed` | `codspeed` (CodSpeed upload) or `compare` (pytest-benchmark, base vs head). |
 | `benchmark-path` | string | `benchmarks` | Benchmark directory, relative to working-directory. |
-| `extras` | string | `dev,benchmarks` | Comma-separated extras to install with the wheel. |
-| `python-version` | string | `3.13` | Python version of the benchmark env. |
-| `pixi-add` | string |  | Space-separated conda-forge specs to add to the env. |
-| `cooldown` | string | `7d` | Ignore conda and PyPI releases newer than this age. Empty disables. |
+| `extras` | string | `dev,benchmarks` | uv repos: comma-separated extras to install with the wheel. |
+| `python-version` | string | `3.13` | uv repos: Python version of the benchmark env. |
+| `uv-locked` | boolean | `true` | uv repos: install dependencies from `uv.lock` before the wheel. Set `false` for a repo without `uv.lock`. |
+| `cooldown` | string | `7d` | uv repos with `uv-locked: false`: ignore PyPI releases newer than this age. Empty disables. |
 | `pytest-args` | string |  | Extra pytest arguments. |
 | `codspeed-modes` | string | `["simulation","memory"]` | JSON list of CodSpeed modes for ubuntu-latest (codspeed mode only). |
 | `walltime-label` | string | `trigger:benchmark` | PR label that starts the walltime run on codspeed-macro. Non-PR events always run it (codspeed mode only). |
@@ -186,7 +191,6 @@ jobs:
     uses: PyPSA/reusable-github-workflows/.github/workflows/benchmark.yml@v1
     with:
       mode: codspeed
-      pixi-add: glpk coin-or-cbc
     permissions: {contents: read, pull-requests: write, id-token: write}
 ```
 

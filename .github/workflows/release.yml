@@ -181,8 +181,7 @@ jobs:
       GUROBI_LIC: ${{ secrets.GUROBI_LIC }}
     with:
       extras: ${{ fromJSON(inputs.test-inputs).extras || 'dev' }}
-      pixi-add: ${{ fromJSON(inputs.test-inputs).pixi-add || '' }}
-      uv-locked: ${{ fromJSON(inputs.test-inputs).uv-locked == true }}
+      uv-locked: ${{ fromJSON(inputs.test-inputs).uv-locked != false }}
       cooldown: ${{ fromJSON(inputs.test-inputs).cooldown == null && '7d' || fromJSON(inputs.test-inputs).cooldown }}
       matrix: ${{ fromJSON(inputs.test-inputs).matrix || 'auto' }}
       python-versions: ${{ fromJSON(inputs.test-inputs).python-versions || '' }}
@@ -301,6 +300,9 @@ jobs:
           mode: library
           python-version: ${{ needs.build.outputs.python-version }}
           extras: ""
+          uv-locked: false
+          manifest-path: ${{ fromJSON(inputs.test-inputs).manifest-path || '' }}
+          pixi-version: ${{ fromJSON(inputs.test-inputs).pixi-version || 'v0.81.0' }}
           wheel-dir: ${{ runner.temp }}/wheels
           working-directory: ${{ inputs.working-directory }}
       - env:

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fixture-pixi-pkg"
+version = "0.0.0"
+description = "pixi-managed fixture package for PyPSA reusable workflow self-tests."
+license = "MIT"
+requires-python = ">=3.12"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[tool.pixi.dependencies]
+python = "3.12.*"
+pytest = "*"
+
+[tool.pixi.pypi-dependencies]
+fixture-pixi-pkg = { path = ".", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
