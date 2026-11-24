@@ -14,19 +14,19 @@ on:
       extras:
         type: string
         default: dev,benchmarks
-        description: Comma-separated extras to install with the wheel.
+        description: Comma-separated extras to install with the wheel (uv repos).
       python-version:
         type: string
         default: "3.13"
-        description: Python version of the benchmark env.
-      pixi-add:
-        type: string
-        default: ""
-        description: Space-separated conda-forge specs to add to the env.
+        description: Python version of the benchmark env (uv repos).
+      uv-locked:
+        type: boolean
+        default: true
+        description: Install dependencies from uv.lock before the wheel (uv repos). Set false for a repo without uv.lock.
       cooldown:
         type: string
         default: 7d
-        description: Ignore conda and PyPI releases newer than this age, e.g. 7d. Empty disables. uv-locked installs ignore it.
+        description: Ignore PyPI releases newer than this age, e.g. 7d (uv repos without uv-locked). Empty disables.
       pytest-args:
         type: string
         default: ""
@@ -127,8 +127,8 @@ jobs:
         with:
           mode: library
           python-version: ${{ inputs.python-version }}
-          pixi-add: ${{ inputs.pixi-add }}
           extras: ${{ inputs.extras }}
+          uv-locked: ${{ inputs.uv-locked }}
           cooldown: ${{ inputs.cooldown }}
           wheel-dir: ${{ runner.temp }}/wheels
           vars-json: ${{ toJSON(vars) }}
@@ -182,13 +182,22 @@ jobs:
       - id: base
         env:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          UV_LOCKED: ${{ inputs.uv-locked }}
         run: |
           set -euo pipefail
-          if [ "$IS_PR" = true ] && [ -f "base/$WORKING_DIRECTORY/pyproject.toml" ]; then
+          dir="base/$WORKING_DIRECTORY"
+          env_dir="head/$WORKING_DIRECTORY"
+          if [ "$IS_PR" = true ] && [ -f "$dir/pyproject.toml" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
+            # A base without uv.lock (e.g. the PR adds it) cannot back a locked env: use head's.
+            if [ "$UV_LOCKED" != true ] || [ -f "$dir/uv.lock" ] || [ -f "$dir/pixi.toml" ] \
+              || grep -Eq '^\[tool\.pixi[].]' "$dir/pyproject.toml"; then
+              env_dir="$dir"
+            fi
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "env-dir=$env_dir" >> "$GITHUB_OUTPUT"
       - uses: hynek/build-and-inspect-python-package@67230f7b8410ae0052b39c1efc89d89fff43ff10 # v3.0.2
         id: head-build
         with:
@@ -223,17 +232,18 @@ jobs:
             first="base"
           fi
           echo "first=$RUNNER_TEMP/wheels/$first" >> "$GITHUB_OUTPUT"
-      - uses: $/.github/actions/setup-env
+      - id: env
+        uses: $/.github/actions/setup-env
         with:
           mode: library
           python-version: ${{ inputs.python-version }}
-          pixi-add: ${{ inputs.pixi-add }}
           extras: ${{ inputs.extras }}
+          uv-locked: ${{ inputs.uv-locked }}
           cooldown: ${{ inputs.cooldown }}
           wheel-dir: ${{ steps.wheels.outputs.first }}
           vars-json: ${{ toJSON(vars) }}
           vars-env: ${{ inputs.vars-env }}
-          working-directory: ${{ steps.base.outputs.present == 'true' && 'base' || 'head' }}/${{ inputs.working-directory }}
+          working-directory: ${{ steps.base.outputs.env-dir }}
       - if: steps.base.outputs.present == 'true'
         working-directory: base/${{ inputs.working-directory }}
         env:
@@ -253,7 +263,14 @@ jobs:
         env:
           PACKAGE: ${{ steps.head-build.outputs.package_name }}
           WHEEL: ${{ steps.head-wheel.outputs.wheel }}
-        run: $RUN uv pip install --reinstall-package "$PACKAGE" "${WHEEL}[$EXTRAS]"
+          BACKEND: ${{ steps.env.outputs.backend }}
+        run: |
+          set -euo pipefail
+          if [ "$BACKEND" = pixi ]; then
+            $RUN uv pip install --no-deps --reinstall-package "$PACKAGE" "$WHEEL"
+          else
+            $RUN uv pip install --reinstall-package "$PACKAGE" "${WHEEL}[${EXTRAS//[[:space:]]/}]"
+          fi
       - working-directory: head/${{ inputs.working-directory }}
         env:
           CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}

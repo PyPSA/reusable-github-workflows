@@ -56,15 +56,37 @@ jobs:
           test "$LEAN" = '[{"os":"ubuntu-latest","version":"3.12"},{"os":"ubuntu-latest","version":"3.14"}]'
           test "$FULL" = '[{"os":"ubuntu-latest","version":"3.12"},{"os":"windows-latest","version":"3.12"}]'
 
-  test-library:
+  test-library-uv:
     uses: ./.github/workflows/test.yml
     permissions:
       contents: read
       id-token: write
     with:
       working-directory: tests/fixture-package
-      pixi-add: glpk
+      artifact-suffix: -uv
+      matrix: full
+      python-versions: '["3.12"]'
+      extras: 'dev, benchmarks'
       coverage: true
+
+  test-library-uv-unlocked:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      working-directory: tests/fixture-package
+      uv-locked: false
+      artifact-suffix: -uv-unlocked
+
+  test-library-pixi:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      working-directory: tests/fixture-pixi-package
+      artifact-suffix: -pixi
 
   test-project:
     uses: ./.github/workflows/test.yml
