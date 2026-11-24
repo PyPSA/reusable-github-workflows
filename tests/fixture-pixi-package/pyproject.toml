@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "fixture-pixi-pkg"
 version = "0.0.0"
 description = "pixi-managed fixture package for PyPSA reusable workflow self-tests."
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 classifiers = [
